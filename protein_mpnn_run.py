@@ -17,6 +17,7 @@ def main(args):
     import random
     import os.path
     import subprocess
+    import pickle as pkl
     
     from protein_mpnn_utils import loss_nll, loss_smoothed, gather_edges, gather_nodes, gather_nodes_t, cat_neighbors_nodes, _scores, _S_to_seq, tied_featurize, parse_PDB, parse_fasta
     from protein_mpnn_utils import StructureDataset, StructureDatasetPDB, ProteinMPNN
@@ -305,6 +306,16 @@ def main(args):
                 concat_log_p = np.concatenate(log_unconditional_probs_list, 0) #[B, L, 21]
                 mask_out = (chain_M*chain_M_pos*mask)[0,].cpu().numpy()
                 np.savez(unconditional_probs_only_file, log_p=concat_log_p, S=S[0,].cpu().numpy(), mask=mask[0,].cpu().numpy(), design_mask=mask_out)
+            elif args.embedding:
+                if print_all:
+                    print(f'Calculating embeddings for {name_}')
+                embedding_file = base_folder + '/embeddings/' + batch_clones[0]['name']
+                embedding_list = []
+                for j in range(NUM_BATCHES):
+                    randn_1 = torch.randn(chain_M.shape, device=X.device)
+                    embedding = model.extract_embeddings(X, S, mask, chain_M*chain_M_pos, residue_idx, chain_encoding_all, randn_1, layer_id=args.embedding_layer)
+                    embedding_list.append(embedding.cpu().numpy())
+                pkl.dump(embedding_list, open(embedding_file + '.pkl', 'wb'))
             else:
                 randn_1 = torch.randn(chain_M.shape, device=X.device)
                 log_probs = model(X, S, mask, chain_M*chain_M_pos, residue_idx, chain_encoding_all, randn_1)
@@ -464,6 +475,9 @@ if __name__ == "__main__":
     argparser.add_argument("--pssm_bias_flag", type=int, default=0, help="0 for False, 1 for True")
     
     argparser.add_argument("--tied_positions_jsonl", type=str, default='', help="Path to a dictionary with tied positions")
+
+    argparser.add_argument("--embedding", action="store_true", default=False, help="Save embeddings")
+    argparser.add_argument("--embedding_layer", type=int, default=0, help="Embedding layer to extract, 0 for the first layer, 1 for the second layer, etc.")
     
     args = argparser.parse_args()    
     main(args)   
